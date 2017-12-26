@@ -1,0 +1,130 @@
+ 源码安装：
+可到官网 http://www.fail2ban.org/wiki/index.php/Downloads 下载最新包
+wget https://github.com/fail2ban/fail2ban/archive/0.9.3.tar.gz
+
+tar -xzvf fail2ban-0.9.3.tar.gz
+cd fail2ban-0.9.3
+python setup.py install
+
+也可直接用 yum 安装
+
+yum install -y fail2ban
+
+/etc/fail2ban/fail2ban.conf 日志设定文档
+/etc/fail2ban/jail.conf 阻挡设定文档
+/etc/fail2ban/filter.d 具体阻挡内容设定目录
+
+service fail2ban start
+或
+/etc/init.d/fail2ban start
+
+语法检测：
+fail2ban-regex /var/log/secure /etc/fail2ban/filter.d/sshd.conf
+
+查看和解除禁用：
+iptables -nL
+iptables -D f2b-sshd 1
+
+全局设置：
+[INCLUDES]
+before = paths-fedora.conf
+
+[DEFAULT]
+ignoreip = 127.0.0.1/8
+ignorecommand =
+bantime  = 600
+findtime  = 600
+maxretry = 3
+backend = auto
+usedns = warn
+logencoding = auto
+enabled = false
+filter = %(__name__)s
+destemail = root@localhost
+sender = root@localhost
+mta = sendmail
+protocol = tcp
+chain = INPUT
+port = 0:65535
+fail2ban_agent = Fail2Ban/%(fail2ban_version)s
+banaction = iptables-multiport
+banaction_allports = iptables-allports
+...
+...
+...
+action = %(action_)s
+
+
+局部设置：
+
+[sshd]
+enabled = true
+port    = xxx
+filter  = sshd
+#logpath = %(sshd_log)s
+
+logpath = /var/log/secure
+#backend = %(sshd_backend)s
+maxretry = 2
+findtime = 60
+bantime = 60
+action = iptables[name=sshd,port=xxx,protocol=tcp]
+
+[pure-ftpd]
+enabled = true
+port     = 21
+logpath  = /var/log/pureftpd.log
+maxretry = 2
+findtime = 60
+bantime = 600
+action = iptables[name=pure-ftpd,port=21,protocol=tcp]
+
+
+vi /etc/fail2ban/filter.d/nginx.conf
+[Definition]
+failregex =<HOST>.*-.*-.*$            
+ignoreregex =
+
+[nginx]
+enabled = true
+port = 80
+filter = nginx
+action = iptables[name=nginx, port=80, protocol=tcp]
+logpath = /home/wwwlogs/nginx_access.log
+bantime = 86400
+findtime = 60 
+maxretry = 100
+
+
+[nginx] 500status     404status     待续。。。
+
+加入 Nginx 防护（ httpd 代替 ）
+## 目的是把规定时间内达到限定访问次数的 IP 封锁（例如，一分钟内有几百次请求）
+shell > vim /etc/fail2ban/jail.conf
+
+[nginx] ## nginx 防护
+enabled = true
+filter = nginx  ## 访问规则定义文件，位置在 /etc/fail2ban/filter.d/nginx.conf
+action = iptables[name=nginx, port=http, protocol=tcp]
+sendmail-whois[name=nginx, dest=1355*******@139.com, sender=fail2ban@aoath.com, sendername="Fail2Ban"]
+
+logpath = /var/log/httpd/access_log ## nginx 访问日志
+
+bantime = 86400 ## 符合规则的屏蔽一天，如果参数值与全局有冲突，优先级大于全局配置
+findtime = 600  ## 10 分钟内访问超过 maxretry 次数的封锁 IP
+maxretry = 1000 ## 最大尝试次数
+
+shell > vim /etc/fail2ban/filter.d/nginx.conf
+
+[Definition]
+failregex =<HOST>.*-.*-.*$             ## <HOST> 表示访问 IP ，其余的其实是最简单匹配了。因为这里没有要匹配精确的 URL ，只是限制访问次数
+ignoreregex =
+
+shell > fail2ban-regex /var/log/httpd/access_log /etc/fail2ban/filter.d/nginx.conf         ## 可以测试条件规则是否可用
+shell > service fail2ban restart         ## 重启服务
+shell > fail2ban-client status             ## 可以看到有两个实例在监控中
+Status
+|- Number of jail: 2
+`- Jail list: nginx, ssh-iptables
+
+便于测试，可以将 maxretry 的值调为 10 
