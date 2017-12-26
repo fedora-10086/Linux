@@ -1,0 +1,83 @@
+查看当前系统支持的IO调度算法
+dmesg | grep -i scheduler
+
+[root@localhost ~]# dmesg | grep -i scheduler
+io scheduler noop registered
+io scheduler anticipatory registered
+io scheduler deadline registered
+io scheduler cfq registered (default)
+
+查看当前系统的I/O调度方法:
+cat /sys/block/sda/queue/scheduler
+noop anticipatory deadline [cfq]
+
+临地更改I/O调度方法:
+例如:想更改到noop电梯调度算法:
+echo noop > /sys/block/sda/queue/scheduler
+
+想永久的更改I/O调度方法:
+修改内核引导参数,加入elevator=调度程序名
+vi /boot/grub/menu.lst
+更改到如下内容:
+kernel /boot/vmlinuz-2.6.18-8.el5 ro root=LABEL=/ elevator=deadline rhgb quiet
+
+重启之后,查看调度方法:
+cat /sys/block/sda/queue/scheduler
+noop anticipatory [deadline] cfq
+已经是deadline了
+
+ionice可以更改任务的类型和优先级,
+不过只有cfq调度程序可以用ionice.
+有三个例子说明ionice的功能:
+采用cfq的实时调度,优先级为7
+ionice -c1 -n7 -ptime dd if=/dev/sda1 f=/tmp/test bs=2M count=300&
+采用缺省的磁盘I/O调度,优先级为3
+ionice -c2 -n3 -ptime dd if=/dev/sda1 f=/tmp/test bs=2M count=300&
+采用空闲的磁盘调度,优先级为0
+ionice -c3 -n0 -ptime dd if=/dev/sda1 f=/tmp/test bs=2M count=300&
+
+ionice的三种调度方法,实时调度最高,其次是缺省的I/O调度,最后是空闲的磁盘调度.
+ionice的磁盘调度优先级有8种,最高是0,最低是7.
+注意,磁盘调度的优先级与进程nice的优先级没有关系.
+一个是针对进程I/O的优先级,一个是针对进程CPU的优先级.
+
+Anticipatory I/O scheduler 适用于大多数环境,但不太合适数据库应用
+Deadline I/O scheduler 通常与Anticipatory相当,但更简洁小巧,更适合于数据库应用
+CFQ I/O scheduler 为所有进程分配等量的带宽,适合于桌面多任务及多媒体应用，默认IO调度器
+Default I/O scheduler
+
+
+
+    为什么我们需要调整磁盘I/O scheduling算法？在什么情况下我们需要考虑调整调度算法？该如何调整？本文将针对上述问题做些回答。
+    I/O scheduling是操作系统存取数据块顺序的算法规则总称，某些情况下我们可能更熟悉称它为 disk scheduling。
+    出于以下几个目我们可能会需要考虑调整磁盘的调度算法：
+    最小化磁盘寻道时间；
+    优化关键进程的I/O请求，保证关键进程的I/O请求；
+    让服务器上的进程更好的共享I/O带宽；
+     
+    在RHEL3版本之前我们只有一个电梯算法可以选择，由于该算法的局限性因此在之后RHEL4版本，我们有以下4中算法可以选择：
+    CFQ-completely fair queuing
+    NOOP-Noop scheduler，No Operation
+    Deadline scheduler
+    Anticipatory scheduling
+     
+    下面针对上述4个算法逐个了解下具体的算法规则。
+     
+    首先是CFQ，这个算法是大部分发行的Linux版本中默认采用的算法，全称为完全公平队列算法，该算法尝试公平的把i/o带宽资源给所有进程，进程提交的请求分别放入各自的队列（64个队列），因此同一个进程提交的请求通常会被存放到同一个队列当中去，在大部分情况下是适用大部分的应用系统。
+     
+    NOOP，该算法最为简单，占用最少的CPU调度时间，遵循FIFO-先进先出的原则对I/O请求进行调度，但是也并不总是这样，因为它还是会对相临近I/O请求的进程做些合并。在存储硬件和磁盘较为优化的情况下该算法的信息还是不错的，比如SSD。
+     
+    Deadline，最后期限算法，该算法最重要的是避免了CFQ算法中某些请求长时间得不到资源饿死的情况发生。使用了4个队列，2个读写队列和2个读写最后期限队列，根据他们的过期时间在最后期限队列排队。该算法中读请求优先级高于写请求，因此首先完成读请求队列（除非写请求已经被放弃、死亡过很多次），接着检查第1个请求的过期时间，读请求的过期时间为500ms，写请求的过期时间为5s，如果检查到第1个请求的最后期限时间已过，那么将它移动到队列末尾。适用于实时请求的系统，推荐数据库或者web服务器系统使用该算法。
+     
+    Anticipatory，预期算法，这是最复杂的一种算法，实际上用起来并不是那么优化，从kernel 2.6.33开始已经被移除了。
+     
+    通过上部描述推荐而且也有人经过验证了，针对Oracle数据库的环境，我们可以优先考虑选择Deadline算法。
+     
+    如何查看系统现有使用的调度算法？
+    cat /sys/block/{DEVICE-NAME}/queue/scheduler
+    cat /sys/block/sda/queue/scheduler
+    修改调度算法:
+    echo {SCHEDULER-NAME} > /sys/block/{DEVICE-NAME}/queue/scheduler
+    echo noop > /sys/block/hda/queue/scheduler
+    最后，，没有一个算法是最优的，在不同的应用、硬件环境中只有逐个测试才能选择最适合的算法。
+    -EOF-
