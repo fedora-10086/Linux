@@ -1,0 +1,52 @@
+快速启动机制:允许通过已经运行的内核的上下文启动另一个Linux内核，不需要经过BIOS。BIOS可能会消耗很多时间，特别是带有众多数量的外设的大型服务器。这种办法可以为经常启动机器的开发者节省很多时间。
+
+使用该机制要满足两个基本条件：
+1）内核版本必需为 2.6.13 或以上，因为自该版本起，linux内核中加入了 kexec system call 模块。
+2）系统需要安装 kexec-tools工具，提供用户空间的kexec 命令。
+
+yum update kernel -y
+yum install kexec-tools -y
+
+如何配置即使用快速启动机制:
+1)确定正在运行的内核是否已经选中支持kexec system call
+
+grep -F CONFIG_KEXEC /boot/config-`uname -r`
+ 
+如果返回值是CONFIG_KEXEC=y，则表示支持。如果是CONFIG_KEXEC=n，则需要重新编译内核，将该项选为y。
+执行make menuconfig，进入Processor type and features ，然后在kexec system call选项处按y即可，然后退出内核配置，执行make linux重新编译内核。
+
+将新编的内核放到/boot下，然后修改/boot/menu.lst, 以使系统启动时加载新内核。
+menu.lst 中，修改kernel /boot/lfskernel-2.6.25.4， 将kernel后的参数改为新内核的路径。也可以另写一组启动参数，在系统启动时可以选择使用不同的内核，如：
+title default kernel
+root (hd0,5)
+kernel /boot/lfs_kernel-2.6.25.4 root=/dev/sda6 ro nomce vga=0x317
+initrd xxxxxx
+
+title kexec_test kernel
+root (hd0,5)
+kernel /boot/kexec_kernel-2.6.25.4 root=/dev/sda6 ro nomce vga=0x317
+initrd xxxxxx
+
+2）加载另一个内核
+
+系统启动后，手动加载第二个内核
+kexec -l /boot/kexec_kernel-2.6.25.4 --args-linux --append="`cat /proc/cmdline`" --initrd=xxxxxxxxxxx
+
+-l 表示加载一个新内核到当前正在运行的内核中，后面跟的是新内核的路径。
+
+--args-linux 表示Pass linux kernel style options
+，不太明白是什么意思。
+
+--append 后面是内核启动参数，于menu.lst中kernel /boot/kexec_kernel-2.6.25.4 root=/dev/sda6 ro nomce vga=0x317是一样的，所以直接用cat /proc/cmdline就可以了。当然，你也可以加上其他参数，例如--append="`cat /proc/cmdline` selinux=1"  ,或者使用全新的参数，例如--append=" root=/dev/sda4 rw nomce vga=0x317"等。
+
+3）切换内核
+kexec -e
+
+系统经过热启动后，再次进入登录状态，重新登录即可。
+
+4）补充
+新加载的内核可以是当前内核本身/boot/kexec_kernel-2.6.25.4，这样可以不停的加载切换。如果加载的是没有编入kexec system call的内核，那么切换之后就不能再次切换了，因为正在运行的内核不支持kexec
+
+kexec -l /boot/vmlinuz-2.6.32-696.1.1.el6.x86_64 --append="`cat /proc/cmdline`" --initrd=/boot/initramfs-2.6.32-696.1.1.el6.x86_64.img
+
+kexec -e 
