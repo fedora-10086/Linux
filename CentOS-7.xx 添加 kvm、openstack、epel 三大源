@@ -1,0 +1,25 @@
+ CentOS7.xx  添加 kvm、openstack、epel 三大源
+mirrors.aliyun.com
+
+有repodata 的文件夹
+vi /etc/yum.repos.d/lab.repo
+[kvm]
+name=kvm
+baseurl=https://mirrors.aliyun.com/centos/7.3.1611/virt/x86_64/kvm-common/
+enabled=1
+gpgcheck=0
+
+[openstack]
+name=openstack
+baseurl=https://mirrors.aliyun.com/centos/7.3.1611/cloud/x86_64/openstack-newton/
+enabled=1
+gpgcheck=0
+
+
+[epel7]
+name=epel7
+baseurl=https://mirrors.aliyun.com/epel/7Server/x86_64/
+enabled=1
+gpgcheck=0
+
+yum repolist
